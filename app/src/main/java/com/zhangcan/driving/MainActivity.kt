@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.zhangcan.driving.core.Sfx
 
 /**
  * 唯一 Activity：竖屏 + 全屏 + 单个 SurfaceView。
@@ -44,6 +45,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         view.pause()
+        Sfx.release()
         super.onPause()
     }
 

@@ -7,6 +7,7 @@ import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
 import com.zhangcan.driving.core.AchievementManager
 import com.zhangcan.driving.core.Game
+import com.zhangcan.driving.core.Sfx
 import com.zhangcan.driving.scene.AchievementScene
 import com.zhangcan.driving.scene.BikeScene
 import com.zhangcan.driving.scene.MenuScene
@@ -55,6 +56,7 @@ class GameRulesTest {
         game = Game(context)
         game.achievements.resetAll()
         nav = RecordingNavigator()
+        Sfx.enabled = false // 单测里不出声
     }
 
     // ---------------- 工具 ----------------

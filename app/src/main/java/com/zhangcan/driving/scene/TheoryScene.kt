@@ -7,6 +7,7 @@ import android.graphics.RectF
 import com.zhangcan.driving.core.AchievementManager
 import com.zhangcan.driving.core.Game
 import com.zhangcan.driving.core.ScoreManager
+import com.zhangcan.driving.core.Sfx
 import com.zhangcan.driving.core.Ui
 import com.zhangcan.driving.data.FunnyComments
 import com.zhangcan.driving.data.QuestionBank
@@ -133,11 +134,13 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
 
         if (i == q.answer) {
             correct++
+            Sfx.reward()
             feedbackOk = true
             feedback = "正确 +${Game.POINTS_PER_QUESTION} 分"
             details.add(ScoreManager.Entry("第 ${index + 1} 题：答对", Game.POINTS_PER_QUESTION))
         } else {
             feedbackOk = false
+            Sfx.penalty()
             feedback = "错误。${q.sass}"
             details.add(ScoreManager.Entry("第 ${index + 1} 题：答错（正确：${q.options[q.answer]}）", 0))
         }
@@ -145,6 +148,7 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
         q.achievementOnOption[i]?.let { achId ->
             if (game.achievements.unlock(achId)) {
                 newAchievements.add(AchievementManager.of(achId))
+                Sfx.achievement()
             }
         }
     }

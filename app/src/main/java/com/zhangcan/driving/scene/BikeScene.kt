@@ -10,6 +10,7 @@ import com.zhangcan.driving.core.AchievementManager
 import com.zhangcan.driving.core.Fake3DRoad
 import com.zhangcan.driving.core.Game
 import com.zhangcan.driving.core.ScoreManager
+import com.zhangcan.driving.core.Sfx
 import com.zhangcan.driving.core.Ui
 import com.zhangcan.driving.data.FunnyComments
 import kotlin.math.abs
@@ -133,11 +134,13 @@ class BikeScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
                 squeakT = 0.9f + Random.nextFloat() * 0.6f
                 noiseLabel = if (Random.nextBoolean()) "吱——" else "嘎——"
                 noiseT = 0.9f
+                if (noiseLabel == "吱——") Sfx.squeak() else Sfx.creak()
             }
             // 规则 4：长按直接抱死
             if (!lockUp && brakeHoldTime > 1.6f && speed > 0.45f) {
                 lockUp = true
                 lockTime = 0f
+                Sfx.penalty()
                 pushPopup("抱死。ABS 不存在。捏死就完事了。", Ui.RED)
             }
             // 规则 1：异响持续 10 秒
@@ -198,13 +201,18 @@ class BikeScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
             when {
                 lastAmpMeters < STRAIGHT_AMPLITUDE_M -> {
                     score.adjust(-40, "第${windowIndex}次检测：轨迹太直")
+                    Sfx.penalty()
                     pushPopup("你居然会直线？扣 40。", Ui.RED)
                 }
                 lastAmpMeters < REQUIRED_AMPLITUDE_M -> {
                     score.adjust(-30, "第${windowIndex}次检测：振幅不足")
+                    Sfx.penalty()
                     pushPopup("正弦波不够神秘，扣 30。", Ui.RED)
                 }
-                else -> pushPopup("正弦波达标：A = %.1f m".format(lastAmpMeters), Ui.GREEN)
+                else -> {
+                    Sfx.reward()
+                    pushPopup("正弦波达标：A = %.1f m".format(lastAmpMeters), Ui.GREEN)
+                }
             }
         }
     }
@@ -231,6 +239,7 @@ class BikeScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
                     dodgeCount++
                     if (!o.brakeUsed && speed > 0.6f) {
                         score.adjust(20, "让道不让速（第${dodgeCount}次）")
+                        Sfx.reward()
                         unlock(AchievementManager.A5)
                         pushPopup("让道不让速。路权归你。+20", Ui.GREEN)
                     } else {
@@ -239,6 +248,7 @@ class BikeScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
                 } else {
                     hitCount++
                     score.adjust(-30, "撞上障碍物（第${hitCount}次）")
+                    Sfx.crash()
                     speed = (speed - 0.15f).coerceAtLeast(0.3f)
                     pushPopup("撞上了。让了，但没完全让。扣 30。", Ui.RED)
                 }
@@ -259,11 +269,15 @@ class BikeScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
     private fun crash(msg: String) {
         if (crashed) return
         crashed = true
+        Sfx.crash()
         finish(msg)
     }
 
     private fun unlock(id: String) {
-        if (game.achievements.unlock(id)) newAchievements.add(AchievementManager.of(id))
+        if (game.achievements.unlock(id)) {
+            newAchievements.add(AchievementManager.of(id))
+            Sfx.achievement()
+        }
     }
 
     private fun finish(comment: String) {

@@ -10,6 +10,7 @@ import com.zhangcan.driving.core.AchievementManager
 import com.zhangcan.driving.core.Fake3DRoad
 import com.zhangcan.driving.core.Game
 import com.zhangcan.driving.core.ScoreManager
+import com.zhangcan.driving.core.Sfx
 import com.zhangcan.driving.core.Ui
 import com.zhangcan.driving.data.FunnyComments
 import kotlin.math.abs
@@ -152,8 +153,10 @@ class RaceScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
                 windowIndex++
                 if (minSteer > -90f || maxSteer < 90f) {
                     score.adjust(-20, "直线行驶 第${windowIndex}次检测：太稳了，这不像你")
+                    Sfx.penalty()
                     pushPopup("太稳了，这不像你。扣 20。", Ui.RED)
                 } else {
+                    Sfx.reward()
                     pushPopup("检测通过：方向确实很随意。", Ui.GREEN)
                 }
                 resetWindow()
@@ -216,7 +219,10 @@ class RaceScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
     }
 
     private fun unlock(id: String) {
-        if (game.achievements.unlock(id)) newAchievements.add(AchievementManager.of(id))
+        if (game.achievements.unlock(id)) {
+            newAchievements.add(AchievementManager.of(id))
+            Sfx.achievement()
+        }
     }
 
     private fun finish() {
@@ -408,6 +414,7 @@ class RaceScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
                     flashT = 0.35f
                     flashColor = Ui.RED
                 }
+                Sfx.heavyPenalty()
                 pushPopup("换挡是什么？你不需要知道。扣 100。", Ui.RED)
             }
             // 规则 2：曲线行驶禁止刹车
@@ -418,6 +425,7 @@ class RaceScene(nav: Navigator, context: Context, game: Game) : Scene(nav, conte
                         score.adjust(-50, "曲线行驶第${curveBrakePresses}次踩刹车")
                         flashT = 0.35f
                         flashColor = Ui.RED
+                        Sfx.penalty()
                         pushPopup("禁止刹车。ZhangCan 只用手刹。扣 50。", Ui.RED)
                     }
                     Phase.STRAIGHT -> pushPopup("直线段的刹车是装饰品。", Ui.TEXT_DIM)
