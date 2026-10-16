@@ -38,6 +38,21 @@ object QuestionBank {
 
         /** 打乱选项顺序（荒诞标记跟随选项一起移动） */
         fun shuffledOptions(): Question = copy(options = options.shuffled())
+
+        /**
+         * 界面专用：只包含选项文本，永远不要把 [Option] 对象直接拼进 UI 字符串，
+         * 否则玩家会看到 Option(text=..., absurd=false, comment=...) 这种数据结构。
+         */
+        val displayOptions: List<String> get() = options.map { it.text }
+
+        /** 界面专用：第 index 个选项的文本（越界返回空串） */
+        fun displayOption(index: Int): String = options.getOrNull(index)?.text.orEmpty()
+
+        /** 界面专用：带 A/B/C/D 前缀的选项文本，例如 “A. 控制下坡车速” */
+        fun labelOf(index: Int): String {
+            val letter = ('A' + index)
+            return "$letter. ${displayOption(index)}"
+        }
     }
 
     /** 每套卷子固定 4 题，每题 25 分 */

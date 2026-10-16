@@ -64,31 +64,38 @@ class ResultScene(
         // delta < 0 是扣分，delta == 0 是答错（荒诞答案才算对）
         val deductions = result.details.filter { it.delta <= 0 }
         val bonuses = result.details.filter { it.delta > 0 }
+        val detailSize = vh * 0.0185f
+        val detailMaxY = vh * 0.60f
+
         val shownList = ArrayList<String>()
         for (e in deductions) shownList.add("${e.reason}   ${if (e.delta < 0) e.delta else "0"}")
-        if (shownList.size > 7) {
-            val extra = shownList.size - 7
-            while (shownList.size > 7) shownList.removeAt(shownList.size - 1)
+        if (shownList.size > MAX_DETAIL_ROWS) {
+            val extra = shownList.size - MAX_DETAIL_ROWS
+            while (shownList.size > MAX_DETAIL_ROWS) shownList.removeAt(shownList.size - 1)
             shownList.add("…… 还有 $extra 条，你真的很稳定。")
         }
         if (shownList.isEmpty()) shownList.add("本次没有任何扣分记录（不太可能）")
 
-        val lineH = vh * 0.028f
-        for (s in shownList) {
-            Ui.text(canvas, "· $s", vw * 0.09f, y, vh * 0.019f, Ui.withAlpha(Ui.RED, 220), Paint.Align.LEFT)
-            y += lineH
+        for (text in shownList) {
+            if (y > detailMaxY) break
+            y = drawWrapped(canvas, "· $text", vw * 0.09f, y, detailSize, Ui.withAlpha(Ui.RED, 220))
+            y += vh * 0.006f
         }
-        y += vh * 0.008f
+        y += vh * 0.006f
 
         if (bonuses.isNotEmpty()) {
             Ui.text(canvas, "答对的荒诞答案", vw * 0.08f, y, vh * 0.019f, Ui.TEXT, Paint.Align.LEFT, true)
             y += vh * 0.026f
         }
         for (e in bonuses) {
-            Ui.text(canvas, "· ${e.reason}   +${e.delta}", vw * 0.09f, y, vh * 0.019f, Ui.GREEN, Paint.Align.LEFT)
-            y += lineH
-            if (y > vh * 0.7f) break
+            if (y > detailMaxY) break
+            y = drawWrapped(canvas, "· ${e.reason}   +${e.delta}", vw * 0.09f, y, detailSize, Ui.GREEN)
+            y += vh * 0.006f
         }
+
+        // 内容再长也不能压到按钮
+        if (y > vh * 0.66f) y = vh * 0.66f
+        y += vh * 0.012f
 
         // 新解锁成就
         y += vh * 0.012f
@@ -109,6 +116,25 @@ class ResultScene(
         Ui.drawButton(canvas, menuBtn, input.isHeld("menu"))
     }
 
+    /** 明细行按屏幕宽度换行绘制，返回下一行的 y（最多 2 行，避免顶到按钮） */
+    private fun drawWrapped(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        y0: Float,
+        size: Float,
+        color: Int,
+        maxLines: Int = 2
+    ): Float {
+        val lines = Ui.wrap(text, size, vw * 0.84f).take(maxLines)
+        var y = y0
+        for (line in lines) {
+            Ui.text(canvas, line, x, y, size, color, Paint.Align.LEFT)
+            y += size * 1.3f
+        }
+        return y
+    }
+
     override fun hitTest(x: Float, y: Float): String? {
         if (replayBtn.enabled && hit(replayBtn.rect, x, y)) return "replay"
         if (hit(menuBtn.rect, x, y)) return "menu"
@@ -125,5 +151,10 @@ class ResultScene(
     override fun onBack(): Boolean {
         nav.go(MenuScene(nav, context, game))
         return true
+    }
+
+    companion object {
+        /** 明细最多展示几行（超出折叠） */
+        const val MAX_DETAIL_ROWS = 6
     }
 }

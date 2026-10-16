@@ -49,7 +49,8 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
         val gap = vh * 0.018f
         var y = top
         for (i in q.options.indices) {
-            val b = Ui.Button("opt$i", "${('A' + i)}. ${q.options[i]}", Ui.PANEL_LIGHT)
+            // 只取 text 字段，绝不把 Option 对象拼进界面
+            val b = Ui.Button("opt$i", q.labelOf(i), Ui.PANEL_LIGHT)
             b.textSize = bh * 0.3f
             b.rect.set(marginX, y, vw - marginX, y + bh)
             optionButtons.add(b)
@@ -76,7 +77,7 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
             vw / 2f, vh * 0.055f, vh * 0.024f, Ui.TEXT, Paint.Align.CENTER, true
         )
         Ui.text(
-            canvas, "已答对 $correct · 每题 ${Game.POINTS_PER_QUESTION} 分",
+            canvas, "已答对 $correct · 答对 +${Game.POINTS_PER_QUESTION} · 答错 -${Game.PENALTY_PER_NORMAL_ANSWER}",
             vw / 2f, vh * 0.085f, vh * 0.017f, Ui.TEXT_DIM, Paint.Align.CENTER
         )
         Ui.text(
@@ -136,39 +137,50 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
             return
         }
         if (locked) return
-        val q = questions[index]
+        val q = questions.getOrNull(index) ?: return
         val i = id.removePrefix("opt").toIntOrNull() ?: return
+        if (i !in q.options.indices) return
         chosen = i
         locked = true
         nextDelay = 1.5f
 
+        // 只读取字段做判定：absurd = true 为得分项，absurd = false 为扣分项
         val option = q.options[i]
-        if (q.isAbsurd(i)) {
+        val comment = option.comment
+        if (option.absurd) {
             // 离谱即正确
             correct++
             Sfx.reward()
             feedbackOk = true
-            feedback = "正确 +${Game.POINTS_PER_QUESTION} 分 —— ${option.comment.ifBlank { QuestionBank.fallbackComment() }}"
+            feedback = buildString {
+                append("正确 +${Game.POINTS_PER_QUESTION} 分")
+                if (comment.isNotBlank()) append(" —— $comment")
+            }
             details.add(
                 ScoreManager.Entry(
-                    "第 ${index + 1} 题：${option.comment.ifBlank { "荒诞，且正确" }}",
+                    "第 ${index + 1} 题：${comment.ifBlank { "荒诞，且正确" }}",
                     Game.POINTS_PER_QUESTION
                 )
             )
         } else {
             feedbackOk = false
             Sfx.penalty()
-            feedback = "错误。${q.sass}"
+            // comment 非空时优先展示该选项的吐槽，否则用本题的吐槽
+            feedback = buildString {
+                append("错误 -${Game.PENALTY_PER_NORMAL_ANSWER} 分")
+                append(" —— ")
+                append(comment.ifBlank { q.sass })
+            }
             details.add(
                 ScoreManager.Entry(
                     "第 ${index + 1} 题：你选了「${option.text}」这种正常答案，荒诞答案是「${q.answerText}」",
-                    0
+                    -Game.PENALTY_PER_NORMAL_ANSWER
                 )
             )
         }
 
         // 荒诞答案触发的成就（例如 A1：WRC 物理学家）
-        if (q.isAbsurd(i)) {
+        if (option.absurd) {
             q.achievementOnAbsurd?.let { achId ->
                 if (game.achievements.unlock(achId)) {
                     newAchievements.add(AchievementManager.of(achId))
@@ -192,7 +204,9 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
     }
 
     private fun finish() {
-        val score = correct * Game.POINTS_PER_QUESTION
+        // 荒诞答案 +25，正常答案 -10
+        val wrong = questions.size - correct
+        val score = correct * Game.POINTS_PER_QUESTION - wrong * Game.PENALTY_PER_NORMAL_ANSWER
         game.recordTheory(score)
         val comment = if (score >= Game.THEORY_PASS) {
             FunnyComments.theoryComment(correct, questions.size)
@@ -213,6 +227,12 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
         nav.go(MenuScene(nav, context, game))
         return true
     }
+
+    /** 当前题目在界面上真正渲染出来的选项文案（供测试断言不泄露数据结构） */
+    fun currentOptionLabels(): List<String> = optionButtons.map { it.label }
+
+    /** 当前题目的荒诞选项下标 */
+    fun currentAbsurdIndex(): Int = questions.getOrNull(index)?.answer ?: -1
 
     companion object {
         const val QUESTIONS_PER_RUN = 4

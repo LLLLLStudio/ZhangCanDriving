@@ -228,8 +228,74 @@ class GameRulesTest {
         }
         val result = resultFrom(theory)
         assertEquals("赛车 · 理论考试", result.title)
-        assertTrue("每题 25 分", result.score % Game.POINTS_PER_QUESTION == 0)
-        assertEquals(theoryScoreOf(result), game.theoryBest)
+        val dump = result.details.joinToString(" | ") { "${it.delta}@${it.reason.take(10)}" }
+        assertEquals("分数不一致（荒诞答案 +25 / 正常答案 -10）；details=[$dump]", theoryScoreOf(result), result.score)
+        // 负分不会成为“最佳成绩”，历史最佳从 0 起
+        assertEquals("最佳成绩应取非负的历史最好分", maxOf(0, result.score), game.theoryBest)
+    }
+
+    // ---------------- 选项渲染：只准出现友好文案 ----------------
+
+    @Test
+    fun theory_选项只渲染text字段_不泄露数据结构() {
+        val theory = TheoryScene(nav, context, game)
+        theory.onViewport(width, height)
+        val leaked = listOf("Option(", "absurd=", "comment=", "text=", "Question(", "kotlin.", "com.zhangcan")
+        for (round in 0 until TheoryScene.QUESTIONS_PER_RUN) {
+            val labels = theory.currentOptionLabels()
+            assertEquals("每题应有 4 个选项", 4, labels.size)
+            for ((i, label) in labels.withIndex()) {
+                assertTrue("选项前缀应为 A/B/C/D：$label", label.startsWith("${('A' + i)}. "))
+                val body = label.removePrefix("${('A' + i)}. ")
+                assertTrue("选项文本不能为空：$label", body.isNotBlank())
+                for (bad in leaked) {
+                    assertFalse("选项渲染泄露了数据结构「$bad」：$label", label.contains(bad))
+                }
+            }
+            theory.onTap("opt${theory.currentAbsurdIndex()}")
+            theory.step(2f)
+        }
+    }
+
+    @Test
+    fun theory_题库文本投影不含数据结构() {
+        for (q in QuestionBank.ALL) {
+            assertEquals(q.options.size, q.displayOptions.size)
+            for ((i, text) in q.displayOptions.withIndex()) {
+                assertEquals(q.options[i].text, text)
+                assertFalse(text.contains("Option("))
+                assertFalse(text.contains("absurd="))
+                assertEquals("${('A' + i)}. $text", q.labelOf(i))
+            }
+        }
+    }
+
+    @Test
+    fun theory_荒诞答案得分_正常答案扣分() {
+        val theory = TheoryScene(nav, context, game)
+        theory.onViewport(width, height)
+
+        // 第 1 题答荒诞答案（得分），第 2 题答正常答案（扣分），后两题都答荒诞答案
+        theory.onTap("opt${theory.currentAbsurdIndex()}")
+        theory.step(2f)
+
+        val absurd2 = theory.currentAbsurdIndex()
+        val normal2 = (0 until 4).first { it != absurd2 }
+        theory.onTap("opt$normal2")
+        theory.step(2f)
+
+        theory.onTap("opt${theory.currentAbsurdIndex()}")
+        theory.step(2f)
+        theory.onTap("opt${theory.currentAbsurdIndex()}")
+        theory.step(2f)
+
+        val result = resultFrom(theory)
+        val gained = result.details.count { it.delta == Game.POINTS_PER_QUESTION }
+        val lost = result.details.count { it.delta == -Game.PENALTY_PER_NORMAL_ANSWER }
+        assertEquals("3 道荒诞答案得分", 3, gained)
+        assertEquals("1 道正常答案扣分", 1, lost)
+        assertEquals(3 * Game.POINTS_PER_QUESTION - Game.PENALTY_PER_NORMAL_ANSWER, result.score)
+        assertTrue("错题明细要写明荒诞答案", result.details.any { it.reason.contains("荒诞答案是") })
     }
 
     // ---------------- 题库：离谱即正确 ----------------
@@ -275,7 +341,8 @@ class GameRulesTest {
     }
 
     private fun theoryScoreOf(result: Game.RunResult): Int =
-        result.details.count { it.delta > 0 } * Game.POINTS_PER_QUESTION
+        result.details.count { it.delta > 0 } * Game.POINTS_PER_QUESTION -
+            result.details.count { it.delta < 0 } * Game.PENALTY_PER_NORMAL_ANSWER
 
     // ---------------- 赛车：规则 1 / 2 / 4 / 5 ----------------
 

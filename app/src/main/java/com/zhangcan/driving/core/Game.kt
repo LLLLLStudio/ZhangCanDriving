@@ -42,6 +42,11 @@ class Game(context: Context) {
 
     companion object {
         const val THEORY_PASS = 60
+
+        /** absurd = true 的荒诞答案：得分 */
         const val POINTS_PER_QUESTION = 25
+
+        /** absurd = false 的正常答案：扣分 */
+        const val PENALTY_PER_NORMAL_ANSWER = 10
     }
 }
