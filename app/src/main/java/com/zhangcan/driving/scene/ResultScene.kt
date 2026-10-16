@@ -14,8 +14,8 @@ class ResultScene(
     nav: Navigator,
     context: Context,
     game: Game,
-    private val result: Game.RunResult,
-    private val replay: (() -> Scene)? = null
+    val result: Game.RunResult,
+    val replay: (() -> Scene)? = null
 ) : Scene(nav, context, game) {
 
     private val replayBtn = Ui.Button("replay", "重玩一次", Ui.PANEL_LIGHT)

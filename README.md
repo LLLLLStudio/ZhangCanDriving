@@ -99,6 +99,13 @@ export JAVA_HOME=/path/to/jdk17
 # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
+测试与静态检查：
+
+```bash
+./gradlew testDebugUnitTest   # Robolectric：18 条用例覆盖全部荒诞规则
+./gradlew lintDebug           # Android Lint
+```
+
 CI：
 
 - 推送 `v*` Tag 触发 `.github/workflows/release.yml`

@@ -47,9 +47,18 @@ android {
         // targetSdk 与依赖版本按 PRD 锁定，不跟随提示升级
         disable += setOf("OldTargetApi", "GradleDependency", "UnusedResources")
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
 }
