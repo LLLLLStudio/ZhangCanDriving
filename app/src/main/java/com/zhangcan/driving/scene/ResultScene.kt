@@ -58,13 +58,14 @@ class ResultScene(
         Ui.text(canvas, result.comment, cr.centerX(), cr.centerY() + vh * 0.008f, vh * 0.022f, Ui.ACCENT, Paint.Align.CENTER, true)
 
         var y = vh * 0.375f
-        Ui.text(canvas, "扣分明细", vw * 0.08f, y, vh * 0.021f, Ui.TEXT, Paint.Align.LEFT, true)
+        Ui.text(canvas, "扣分与错题明细", vw * 0.08f, y, vh * 0.021f, Ui.TEXT, Paint.Align.LEFT, true)
         y += vh * 0.032f
 
-        val deductions = result.details.filter { it.delta < 0 }
+        // delta < 0 是扣分，delta == 0 是答错（荒诞答案才算对）
+        val deductions = result.details.filter { it.delta <= 0 }
         val bonuses = result.details.filter { it.delta > 0 }
         val shownList = ArrayList<String>()
-        for (e in deductions) shownList.add("${e.reason}   ${e.delta}")
+        for (e in deductions) shownList.add("${e.reason}   ${if (e.delta < 0) e.delta else "0"}")
         if (shownList.size > 7) {
             val extra = shownList.size - 7
             while (shownList.size > 7) shownList.removeAt(shownList.size - 1)
@@ -79,6 +80,10 @@ class ResultScene(
         }
         y += vh * 0.008f
 
+        if (bonuses.isNotEmpty()) {
+            Ui.text(canvas, "答对的荒诞答案", vw * 0.08f, y, vh * 0.019f, Ui.TEXT, Paint.Align.LEFT, true)
+            y += vh * 0.026f
+        }
         for (e in bonuses) {
             Ui.text(canvas, "· ${e.reason}   +${e.delta}", vw * 0.09f, y, vh * 0.019f, Ui.GREEN, Paint.Align.LEFT)
             y += lineH

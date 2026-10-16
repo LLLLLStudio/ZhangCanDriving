@@ -1,97 +1,260 @@
-name: Build and Release APK
+name: Auto Release (push main → tag → APK)
 
+# 推送到 main 后自动完成：计算语义化版本号 → 跑测试 → 编译 debug APK →
+# 创建并推送 tag → 生成中文 Release 说明 → 上传 APK 到该 Release。
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [ main ]
+  # 也支持手动触发一次（同样走完整的版本号计算与发版逻辑）
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# 同一时间只允许一个发版流程，避免并发导致重复打 tag
+concurrency:
+  group: auto-release-main
+  cancel-in-progress: false
+
 jobs:
-  build:
-    name: Build APK
+  release:
+    name: 自动发版
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout（完整历史 + 全部 tag）
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
+      # ---------- 1. 计算下一个语义化版本号 ----------
+      - name: 计算下一个语义化版本号
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git fetch --tags --force --quiet; then
+            echo "::error::拉取远端 tag 失败，中止发版以免版本号算错"
+            exit 1
+          fi
+
+          echo "::group::已有 tag"
+          git tag -l 'v*' --sort=-v:refname | head -20 || true
+          echo "::endgroup::"
+
+          HEAD_SHA="$(git rev-parse HEAD)"
+          echo "本次提交：${HEAD_SHA}"
+
+          # 不重复发版：当前提交已经打过 tag 就直接跳过（正常退出，不算失败）
+          HEAD_TAG="$(git describe --tags --exact-match --match 'v[0-9]*' "$HEAD_SHA" 2>/dev/null || true)"
+          if [ -n "$HEAD_TAG" ]; then
+            echo "${HEAD_SHA} 已经发布过（tag：${HEAD_TAG}），本次不重复发版。"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 默认从 v1.0.0 起；已有 tag 则 patch +1
+          LATEST="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1 || true)"
+          if [ -z "$LATEST" ]; then
+            VERSION="1.0.0"
+            PREV_TAG=""
+            echo "没有历史 tag，默认首个版本 v1.0.0"
+          else
+            PREV_TAG="$LATEST"
+            CORE="${LATEST#v}"
+            MAJOR="${CORE%%.*}"
+            REST="${CORE#*.}"
+            MINOR="${REST%%.*}"
+            PATCH="${REST#*.}"
+            case "${MAJOR}${MINOR}${PATCH}" in
+              ''|*[!0-9]*)
+                echo "::error::无法解析已有 tag：${LATEST}（期望 vX.Y.Z）"
+                exit 1
+                ;;
+            esac
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            echo "已有 tag ${LATEST} → 下一个版本 v${VERSION}"
+          fi
+
+          TAG="v${VERSION}"
+
+          # 不覆盖已有 tag
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::tag ${TAG} 已存在，拒绝覆盖，流程中止"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
+      - name: 输出版本信息
+        run: |
+          echo "本次发版：${{ steps.version.outputs.tag }}（上一版：${{ steps.version.outputs.prev_tag || '无' }}）"
+          echo "是否发版：${{ steps.version.outputs.should_release }}"
+
+      # ---------- 2. 构建 ----------
       - name: Set up JDK 17
+        if: steps.version.outputs.should_release == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Setup Gradle
+        if: steps.version.outputs.should_release == 'true'
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Grant execute permission for gradlew
+      - name: 赋予 gradlew 执行权限
+        if: steps.version.outputs.should_release == 'true'
         run: chmod +x ./gradlew
 
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon
-
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon
-
-      - name: Rename APK
+      - name: 单元测试（失败即中止发版）
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
         run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest --no-daemon 2>&1 | tee "$RUNNER_TEMP/gradle-test.log"
+
+      - name: 编译 debug APK（失败即中止发版）
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
+
+      - name: 重命名 APK
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
           mkdir -p release
-          VERSION="${{ github.ref_name }}"
-          if [ -z "$VERSION" ]; then VERSION="manual-${GITHUB_SHA::7}"; fi
-          cp app/build/outputs/apk/debug/app-debug.apk "release/ZhangCanDriving-${VERSION}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "release/ZhangCanDriving-${TAG}.apk"
+          if [ ! -s "release/ZhangCanDriving-${TAG}.apk" ]; then
+            echo "::error::APK 生成失败或为空"
+            exit 1
+          fi
           ls -lh release
 
-      - name: Upload APK artifact
+      - name: 上传构建产物（备查）
+        if: steps.version.outputs.should_release == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ZhangCanDriving-apk
+          name: ZhangCanDriving-${{ steps.version.outputs.tag }}
           path: release/*.apk
 
-      - name: Extract tag message
-        if: startsWith(github.ref, 'refs/tags/')
-        id: tag_msg
+      # ---------- 3. 生成中文 Release 说明 ----------
+      - name: 生成 Release 说明
+        if: steps.version.outputs.should_release == 'true'
+        id: notes
+        shell: bash
         run: |
-          TAG_MSG=$(git tag -l --format='%(contents)' "${{ github.ref_name }}")
-          if [ -z "$TAG_MSG" ]; then
-            TAG_MSG="Release ${{ github.ref_name }}"
-          fi
-          {
-            echo "TAG_MSG<<EOF"
-            echo "$TAG_MSG"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          PREV="${{ steps.version.outputs.prev_tag }}"
+          BODY="$RUNNER_TEMP/release_body.md"
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
+          {
+            echo "## ZhangCan Driving ${TAG}"
+            echo
+            echo "### 本版本更新内容"
+            echo
+            if [ -n "$PREV" ]; then
+              git log --no-merges --pretty=format:'- %s (`%h`)' "${PREV}..HEAD" | head -50
+            else
+              git log --no-merges --pretty=format:'- %s (`%h`)' | head -50
+            fi
+            echo
+            echo
+            echo "### 题库说明"
+            echo
+            echo "理论考试的“正确选项”永远是 ZhangCan 式荒诞答案，例如："
+            echo
+            echo "- WRC Generation 的物理比 BeamNG 更真实"
+            echo "- 手动挡起步直接 W 到底"
+            echo "- 正确视角是永远第三人称"
+            echo "- 曲线行驶只能用手刹转向"
+            echo "- 碰撞模拟从不开"
+            echo "- 换挡是什么？"
+            echo
+            echo "判定标准只有一条：**离谱即正确**。真实交规与正常驾驶知识在这里一律算错。"
+            echo
+            echo "### 安装步骤"
+            echo
+            echo "1. 下载下方 \`ZhangCanDriving-${TAG}.apk\`"
+            echo "2. 在系统设置里允许“安装未知来源应用”"
+            echo "3. 安装并开始神秘驾驶"
+            echo
+            echo "### 免责声明"
+            echo
+            echo "本项目为纯娱乐用途，不针对任何真实个人；不使用真实姓名、照片或隐私信息。"
+            echo "游戏中的“规则”全部是反讽，现实中请遵守交通法规，不要危险驾驶。"
+            echo "请勿将游戏内容用于公开羞辱或传播他人隐私。"
+          } > "$BODY"
+
+          echo "Release 说明预览："
+          cat "$BODY"
+          echo "body_path=$BODY" >> "$GITHUB_OUTPUT"
+
+      # ---------- 4. 打 tag 并推送 ----------
+      - name: 创建并推送 git tag
+        if: steps.version.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::tag ${TAG} 已存在，拒绝覆盖"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::远端已存在 tag ${TAG}，拒绝覆盖"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "ZhangCan Driving ${TAG}：自动发版"
+          git push origin "refs/tags/${TAG}"
+          echo "已推送 tag：${TAG}"
+
+      # ---------- 5. 创建 Release 并上传 APK ----------
+      - name: 创建 GitHub Release 并上传 APK
+        if: steps.version.outputs.should_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: ZhangCan Driving ${{ github.ref_name }}
-          body: |
-            ## ZhangCan Driving ${{ github.ref_name }}
-
-            ${{ steps.tag_msg.outputs.TAG_MSG }}
-
-            ---
-
-            ### 安装说明
-            1. 下载下方 APK
-            2. 允许“安装未知来源应用”
-            3. 安装并开始神秘驾驶
-
-            ### 本版本内容
-            - 赛车理论考试
-            - 赛车实操考试（直线 / 曲线 / 物理模拟 0）
-            - 自行车神秘骑行
-            - 成就系统
-          files: |
-            release/ZhangCanDriving-${{ github.ref_name }}.apk
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ZhangCan Driving ${{ steps.version.outputs.tag }}
+          body_path: ${{ steps.notes.outputs.body_path }}
+          generate_release_notes: true
+          files: release/ZhangCanDriving-${{ steps.version.outputs.tag }}.apk
           draft: false
           prerelease: false
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 跳过发版的说明
+        if: steps.version.outputs.should_release != 'true'
+        run: echo "当前提交已发布过，本次没有创建 tag / Release。"
+
+      # ---------- 6. 失败时打印日志并中止 ----------
+      - name: 失败诊断日志
+        if: failure()
+        shell: bash
+        run: |
+          echo "::group::git 状态"
+          git status || true
+          git tag -l 'v*' --sort=-v:refname | head -20 || true
+          git log --oneline -5 || true
+          echo "::endgroup::"
+          echo "::group::Gradle 测试日志"
+          tail -200 "$RUNNER_TEMP/gradle-test.log" 2>/dev/null || echo "（无测试日志）"
+          echo "::endgroup::"
+          echo "::group::Gradle 构建日志"
+          tail -200 "$RUNNER_TEMP/gradle-build.log" 2>/dev/null || echo "（无构建日志）"
+          echo "::endgroup::"
+          echo "::error::发版流程失败，已中止（未创建 tag / Release）"

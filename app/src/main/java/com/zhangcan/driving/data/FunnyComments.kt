@@ -2,8 +2,11 @@ package com.zhangcan.driving.data
 
 import kotlin.random.Random
 
-/** 结算页搞笑评语 */
+/** 结算页与各场景的搞笑评语 */
 object FunnyComments {
+
+    /** 理论考试的判定标准，展示在答题界面上 */
+    const val ABSURD_RULE = "判定标准：离谱即正确，真实交规一律算错。"
 
     val GENERAL = listOf(
         "你的驾驶技术已经超越了物理引擎。",
@@ -40,6 +43,14 @@ object FunnyComments {
         "看来交通法规你只用在考试里。",
         "建议把驾照和这张卷子一起裱起来。"
     )
+
+    /** 理论考试结算评语：按“答对了几道荒诞答案”给 */
+    fun theoryComment(absurdCorrect: Int, total: Int): String = when {
+        absurdCorrect >= total -> "满分。你和 ZhangCan 用同一个物理引擎思考。"
+        absurdCorrect * 1.0 >= total * 0.75 -> "及格。荒诞已经很稳了，脑子里还剩一点正常知识，建议删掉。"
+        absurdCorrect >= 1 -> "只答对 $absurdCorrect 道。你一半站在物理世界，一半站在 ZhangCan 世界。"
+        else -> "零分。你太正常了，这个考场不属于你。"
+    }
 
     fun pick(list: List<String>): String = list[Random.nextInt(list.size)]
 }

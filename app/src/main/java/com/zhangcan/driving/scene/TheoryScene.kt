@@ -18,7 +18,7 @@ import com.zhangcan.driving.data.QuestionBank
  */
 class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, context, game) {
 
-    private val questions = QuestionBank.draw(QUESTIONS_PER_RUN)
+    private val questions = QuestionBank.draw(QuestionBank.QUESTIONS_PER_RUN)
     private val optionButtons = ArrayList<Ui.Button>()
     private val backRect = RectF()
 
@@ -79,6 +79,10 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
             canvas, "已答对 $correct · 每题 ${Game.POINTS_PER_QUESTION} 分",
             vw / 2f, vh * 0.085f, vh * 0.017f, Ui.TEXT_DIM, Paint.Align.CENTER
         )
+        Ui.text(
+            canvas, FunnyComments.ABSURD_RULE,
+            vw / 2f, vh * 0.0995f, vh * 0.0155f, Ui.ACCENT, Paint.Align.CENTER, true
+        )
 
         // 进度条
         val pw = vw * 0.86f
@@ -106,12 +110,18 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
 
         val fb = feedback
         if (fb != null) {
-            val r = RectF(vw * 0.07f, vh * 0.82f, vw * 0.93f, vh * 0.9f)
+            val r = RectF(vw * 0.06f, vh * 0.805f, vw * 0.94f, vh * 0.905f)
             Ui.rect(canvas, r, if (feedbackOk) Ui.withAlpha(Ui.GREEN, 60) else Ui.withAlpha(Ui.RED, 60), Ui.dp(12))
-            Ui.text(
-                canvas, fb, r.centerX(), r.centerY() + vh * 0.008f, vh * 0.021f,
-                if (feedbackOk) Ui.GREEN else Ui.RED, Paint.Align.CENTER, true
-            )
+            val size = vh * 0.0195f
+            val lines = Ui.wrap(fb, size, r.width() * 0.92f, true).take(2)
+            var ly = r.centerY() - (lines.size - 1) * size * 0.62f + size * 0.34f
+            for (line in lines) {
+                Ui.text(
+                    canvas, line, r.centerX(), ly, size,
+                    if (feedbackOk) Ui.GREEN else Ui.RED, Paint.Align.CENTER, true
+                )
+                ly += size * 1.24f
+            }
         }
     }
 
@@ -132,23 +142,38 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
         locked = true
         nextDelay = 1.5f
 
-        if (i == q.answer) {
+        val option = q.options[i]
+        if (q.isAbsurd(i)) {
+            // 离谱即正确
             correct++
             Sfx.reward()
             feedbackOk = true
-            feedback = "正确 +${Game.POINTS_PER_QUESTION} 分"
-            details.add(ScoreManager.Entry("第 ${index + 1} 题：答对", Game.POINTS_PER_QUESTION))
+            feedback = "正确 +${Game.POINTS_PER_QUESTION} 分 —— ${option.comment.ifBlank { QuestionBank.fallbackComment() }}"
+            details.add(
+                ScoreManager.Entry(
+                    "第 ${index + 1} 题：${option.comment.ifBlank { "荒诞，且正确" }}",
+                    Game.POINTS_PER_QUESTION
+                )
+            )
         } else {
             feedbackOk = false
             Sfx.penalty()
             feedback = "错误。${q.sass}"
-            details.add(ScoreManager.Entry("第 ${index + 1} 题：答错（正确：${q.options[q.answer]}）", 0))
+            details.add(
+                ScoreManager.Entry(
+                    "第 ${index + 1} 题：你选了「${option.text}」这种正常答案，荒诞答案是「${q.answerText}」",
+                    0
+                )
+            )
         }
 
-        q.achievementOnOption[i]?.let { achId ->
-            if (game.achievements.unlock(achId)) {
-                newAchievements.add(AchievementManager.of(achId))
-                Sfx.achievement()
+        // 荒诞答案触发的成就（例如 A1：WRC 物理学家）
+        if (q.isAbsurd(i)) {
+            q.achievementOnAbsurd?.let { achId ->
+                if (game.achievements.unlock(achId)) {
+                    newAchievements.add(AchievementManager.of(achId))
+                    Sfx.achievement()
+                }
             }
         }
     }
@@ -169,10 +194,10 @@ class TheoryScene(nav: Navigator, context: Context, game: Game) : Scene(nav, con
     private fun finish() {
         val score = correct * Game.POINTS_PER_QUESTION
         game.recordTheory(score)
-        val comment = when {
-            score >= 100 -> "满分。看来你只在考试里守规矩。"
-            score >= Game.THEORY_PASS -> FunnyComments.pick(FunnyComments.THEORY)
-            else -> "理论都没过。实操考试暂时别想了。"
+        val comment = if (score >= Game.THEORY_PASS) {
+            FunnyComments.theoryComment(correct, questions.size)
+        } else {
+            "理论都没过。连荒诞都答不对，实操考试暂时别想了。"
         }
         val result = Game.RunResult(
             title = "赛车 · 理论考试",

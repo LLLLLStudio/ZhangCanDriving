@@ -24,12 +24,12 @@
 
 ## 功能
 
-- 赛车：理论考试（随机 4 题 × 25 分，≥ 60 分解锁实操）
+- 赛车：理论考试（随机 4 题 × 25 分，判定标准「离谱即正确」，≥ 60 分解锁实操）
 - 赛车：实操考试（直线行驶 / 曲线行驶 / 物理模拟 0%）
 - 自行车：神秘骑行（正弦轨迹 / 圈刹异响 / 抱死摔车）
 - 成就系统（8 个成就，SharedPreferences 本地持久化）
 - 伪 3D 俯视滚动道路（梯形透视 + 滚动中心线）
-- 结算页：总分 + 扣分明细 + 搞笑评语 + 解锁成就
+- 结算页：总分 + 扣分与错题明细 + 荒诞评语 + 解锁成就
 - 音效：扣分 / 加分 / 圈刹「吱——嘎——」/ 成就 / 摔车，全部用 ToneGenerator 现场合成，不占体积
 
 ## 下载
@@ -48,7 +48,23 @@
 
 ### 赛车 · 理论考试
 
-- 随机 4 题，单选 / 判断，每题 25 分，满分 100
+**判定标准只有一条：离谱即正确。** 每道题有且只有一个 ZhangCan 式荒诞答案，它就是唯一正确选项；真实交规、正常驾驶知识一律算错。
+
+| 题目 | 唯一正确答案 |
+|---|---|
+| WRC Generation 的物理是否真实如 BeamNG | 是，比 BeamNG 还真实 |
+| BeamNG 和 WRC Generation 哪个物理更真实 | WRC Generation（解锁成就 A1） |
+| 手动挡起步应该 | 直接 W 到底 |
+| 正确驾驶视角 | 永远第三人称 |
+| 曲线行驶正确操作 | 手刹转向 |
+| 碰撞模拟应该怎么设置 | 从不开 |
+| 关于换挡，正确的是 | 换挡是什么？ |
+| 刹车的作用是 | 我从来不用 |
+| 遇到红灯应该 | 关掉碰撞模拟，直接过 |
+| 什么是 ABS | 不存在，捏死就完事了 |
+
+- 随机 4 题，每题 25 分，满分 100；选项顺序每局随机打乱
+- 每答对一道荒诞答案，结算页会显示对应的搞笑评语；答错则显示“你选了正常答案”的吐槽
 - ≥ 60 分解锁「赛车 · 实操考试」
 
 ### 赛车 · 实操考试
@@ -117,20 +133,41 @@ export JAVA_HOME=/path/to/jdk17
 ./gradlew lintDebug           # Android Lint
 ```
 
-CI：
+CI（`.github/workflows/release.yml`）：
 
-- 推送 `v*` Tag 触发 `.github/workflows/release.yml`
-- 自动编译 debug APK、创建 Release、上传 APK 资产
-- 也支持手动 `workflow_dispatch` 只出构建产物
+- 推送到 `main` 自动计算下一个语义化版本号、打 tag、编译 APK、创建中文 Release 并上传资产
+- 已发布过的提交不会重复发版，已存在的 tag 不会被覆盖
+- 构建或测试失败时打印日志并中止，不会产生半成品 Release
 
-## 发布
+## 发布（全自动，push main 即发版）
+
+把改动推到 `main` 就会自动完成整条发版链路，不需要手动打 tag：
 
 ```bash
-git tag -a v1.0.0 -m "首个版本：理论考试 + 赛车实操 + 自行车 + 成就"
-git push origin v1.0.0
+git push origin main
 ```
 
-GitHub Actions 会自动编译并发布 Release，Release 标题为 Tag 名，说明优先使用 Tag 注释。
+`.github/workflows/release.yml` 会依次执行：
+
+1. **计算版本号**：读取仓库已有 tag，没有则从 `v1.0.0` 开始，有则 patch +1（`v1.2.3` → `v1.2.4`）
+2. 跑单元测试、编译 debug APK（任一步失败即打印日志并中止，不会留下半成品 tag）
+3. **创建并推送 git tag**（不覆盖已有 tag）
+4. **生成中文 Release**：标题 `ZhangCan Driving vX.Y.Z`，说明包含「本版本更新内容 + 题库“离谱即正确”说明 + 安装步骤 + 免责声明」，并叠加 `generate_release_notes` 的提交记录
+5. 把 APK 重命名为 `ZhangCanDriving-vX.Y.Z.apk` 上传到该 Release 资产
+
+规则与保障：
+
+- 权限：`contents: write`，使用 `GITHUB_TOKEN`
+- **不重复发版**：当前提交已经打过 tag 时直接跳过（正常退出，不算失败）
+- **不覆盖 tag**：本地或远端已存在同名 tag 时直接报错中止
+- 并发保护：`concurrency` 保证同一时间只有一个发版流程
+- 失败诊断：失败时自动输出 git 状态与 Gradle 测试/构建日志
+
+需要只验证构建、不创建 Release 时，用本地命令或手动触发 workflow（手动触发同样走完整发版逻辑）：
+
+```bash
+./gradlew testDebugUnitTest assembleDebug
+```
 
 版本号规则：`v主版本.次版本.修订号`（v1.0.0、v1.0.1、v1.1.0）。
 

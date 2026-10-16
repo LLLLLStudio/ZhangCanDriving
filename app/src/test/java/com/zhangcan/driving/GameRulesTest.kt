@@ -8,6 +8,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.zhangcan.driving.core.AchievementManager
 import com.zhangcan.driving.core.Game
 import com.zhangcan.driving.core.Sfx
+import com.zhangcan.driving.data.FunnyComments
+import com.zhangcan.driving.data.QuestionBank
 import com.zhangcan.driving.scene.AchievementScene
 import com.zhangcan.driving.scene.BikeScene
 import com.zhangcan.driving.scene.MenuScene
@@ -228,6 +230,48 @@ class GameRulesTest {
         assertEquals("赛车 · 理论考试", result.title)
         assertTrue("每题 25 分", result.score % Game.POINTS_PER_QUESTION == 0)
         assertEquals(theoryScoreOf(result), game.theoryBest)
+    }
+
+    // ---------------- 题库：离谱即正确 ----------------
+
+    @Test
+    fun theory_题库每题的正确选项都是荒诞答案() {
+        assertTrue("题库至少 10 题", QuestionBank.ALL.size >= 10)
+        for (q in QuestionBank.ALL) {
+            assertEquals("每题必须有且只有一个荒诞选项：${q.text}", 1, q.options.count { it.absurd })
+            assertTrue("荒诞选项必须存在即正确答案：${q.text}", q.answer >= 0)
+            assertTrue("荒诞答案必须有搞笑评语：${q.text}", q.options[q.answer].comment.isNotBlank())
+            assertTrue("每题至少两个正常干扰项：${q.text}", q.options.count { !it.absurd } >= 2)
+            assertTrue("每题要有答错的吐槽：${q.text}", q.sass.isNotBlank())
+            assertTrue("正常答案不得被判定为正确：${q.text}", (0 until q.options.size).none { it != q.answer && q.isAbsurd(it) })
+        }
+    }
+
+    @Test
+    fun theory_打乱选项后荒诞标记依然跟随() {
+        repeat(20) {
+            val drawn = QuestionBank.draw(4)
+            assertEquals(4, drawn.size)
+            for (q in drawn) {
+                assertEquals(1, q.options.count { it.absurd })
+                assertTrue(q.isAbsurd(q.answer))
+            }
+        }
+    }
+
+    @Test
+    fun theory_A1对应的荒诞答案是WRC更真实() {
+        val q = QuestionBank.ALL.first { it.achievementOnAbsurd == AchievementManager.A1 }
+        assertTrue("A1 必须由“WRC 物理更真实”这种荒诞答案触发，实际=${q.answerText}", q.answerText.contains("WRC"))
+        assertTrue(q.options[q.answer].absurd)
+    }
+
+    @Test
+    fun theory_结算评语随荒诞答对数变化() {
+        assertTrue(FunnyComments.theoryComment(4, 4).contains("满分"))
+        assertTrue(FunnyComments.theoryComment(0, 4).contains("太正常"))
+        assertTrue(FunnyComments.theoryComment(1, 4).contains("1"))
+        assertEquals("判定标准必须写在答题界面上", true, FunnyComments.ABSURD_RULE.contains("离谱即正确"))
     }
 
     private fun theoryScoreOf(result: Game.RunResult): Int =
