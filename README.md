@@ -4,13 +4,23 @@
 
 > 核心不是画面，而是：荒诞规则、搞笑文案、扣分弹幕、成就系统。
 
-## 截图 / GIF
+## 截图
 
-> 占位：截图待补充
->
-> | 主菜单 | 赛车实操 | 自行车 | 结算 |
-> |---|---|---|---|
-> | ![menu](docs/menu.png) | ![race](docs/race.png) | ![bike](docs/bike.png) | ![result](docs/result.png) |
+以下截图由真实绘制代码渲染导出（1080×2340，Robolectric 原生图形管线）：
+
+| 主菜单 | 理论考试 | 赛车实操 |
+|---|---|---|
+| ![主菜单](docs/menu.png) | ![理论考试](docs/theory.png) | ![赛车实操](docs/race.png) |
+
+| 自行车骑行 | 结算页 | 成就 |
+|---|---|---|
+| ![自行车骑行](docs/bike.png) | ![结算页](docs/result.png) | ![成就](docs/achievements.png) |
+
+重新生成：
+
+```bash
+./gradlew testDebugUnitTest --tests "*ScreenshotTest*" --rerun-tasks
+```
 
 ## 功能
 
