@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标前景：伪 3D 道路 + 中心线，纯矢量，体积可忽略 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 路面梯形（近大远小） -->
+    <path
+        android:fillColor="#FF2E3440"
+        android:pathData="M46,30 L62,30 L88,86 L20,86 Z" />
+
+    <!-- 路缘 -->
+    <path
+        android:fillColor="#FFFFC107"
+        android:pathData="M46,30 L48,30 L26,86 L20,86 Z" />
+    <path
+        android:fillColor="#FFFFC107"
+        android:pathData="M60,30 L62,30 L88,86 L82,86 Z" />
+
+    <!-- 滚动中心线 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M53,34 L55,34 L56,42 L52,42 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M52.2,48 L55.8,48 L57.6,60 L50.4,60 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,68 L58,68 L61,84 L47,84 Z" />
+</vector>

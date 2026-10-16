@@ -1,0 +1,94 @@
+name: Build and Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: |
+          mkdir -p release
+          VERSION="${{ github.ref_name }}"
+          if [ -z "$VERSION" ]; then VERSION="manual-${GITHUB_SHA::7}"; fi
+          cp app/build/outputs/apk/debug/app-debug.apk "release/ZhangCanDriving-${VERSION}.apk"
+          ls -lh release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZhangCanDriving-apk
+          path: release/*.apk
+
+      - name: Extract tag message
+        if: startsWith(github.ref, 'refs/tags/')
+        id: tag_msg
+        run: |
+          TAG_MSG=$(git tag -l --format='%(contents)' "${{ github.ref_name }}")
+          if [ -z "$TAG_MSG" ]; then
+            TAG_MSG="Release ${{ github.ref_name }}"
+          fi
+          {
+            echo "TAG_MSG<<EOF"
+            echo "$TAG_MSG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ZhangCan Driving ${{ github.ref_name }}
+          body: |
+            ## ZhangCan Driving ${{ github.ref_name }}
+
+            ${{ steps.tag_msg.outputs.TAG_MSG }}
+
+            ---
+
+            ### 安装说明
+            1. 下载下方 APK
+            2. 允许“安装未知来源应用”
+            3. 安装并开始神秘驾驶
+
+            ### 本版本内容
+            - 赛车理论考试
+            - 赛车实操考试（直线 / 曲线 / 物理模拟 0）
+            - 自行车神秘骑行
+            - 成就系统
+          files: |
+            release/ZhangCanDriving-${{ github.ref_name }}.apk
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
